@@ -13,6 +13,6 @@ fn main() {
     println!("ROTATE(\n{:016X}, 04) = \n--------\n{:016X}\n\n", a[3],   rotate!(a[3], 4));
     println!("ROTATE(\n{:016X}, 08) = \n--------\n{:016X}\n\n", a[3],   rotate!(a[3], 8));
     println!("ROTATE(\n{:016X}, 12) = \n--------\n{:016X}\n\n", a[3],   rotate!(a[3], 12));
-    println!("ROTATE(\n{:016X}, 02) = \n--------\n{:016X}\n\n", 0x1000, rotate!(0x1000, 2));
-    println!("ROTATE(\n{:016X}, 30) = \n--------\n{:016X}\n\n", 0x1000, rotate!(0x1000, 30));
+    println!("ROTATE(\n{:016X}, 02) = \n--------\n{:016X}\n\n", 0x1000, rotate!(0x1000_u64, 2));
+    println!("ROTATE(\n{:016X}, 30) = \n--------\n{:016X}\n\n", 0x1000, rotate!(0x1000_u64, 30));
 }

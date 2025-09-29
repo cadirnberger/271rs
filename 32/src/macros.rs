@@ -12,9 +12,8 @@ macro_rules! median {
     };
 }
 
-#[macro_export]
 macro_rules! rotate {
-    ($x:expr, $n:expr) => {
-          (($x) >> (($n) % 64))
-    };
+    ($x:expr, $n:expr) => (
+        (($x >> ($n % 64)) | ($x << (64 - ($n % 64))))
+    );
 }
