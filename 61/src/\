@@ -1,0 +1,37 @@
+fn num_to_b64(n:i64){
+    if n in 0..26{
+       let alb = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+       return alb[n]
+    }
+    if n in 26..52{
+      let labl = "abcdefghijklmnopqrstuvwxyz";
+      return lalb[n-26];
+    }
+    if n in 52..62{
+    return n - 52
+    }
+    return "+" if n == 62 else "/"
+}
+
+
+
+fn main() {
+    println!("Character to write:");
+    let mut val = std::string::String::new();
+    std::io::stdin().read_line(&mut val).unwrap();
+
+    let byte: u8 = val.trim().parse().unwrap();
+    let buffer = [byte; 1];
+
+    println!("Number of times to write:");
+    let mut count = std::string::String::new();
+    std::io::stdin().read_line(&mut count).unwrap();
+
+    let count: usize = count.trim().parse().unwrap();
+
+    let mut file = std::fs::File::create("out.txt").unwrap();
+
+    for _i in 0..count {
+        std::io::Write::write_all(&mut file, &buffer).unwrap();
+    }
+}
