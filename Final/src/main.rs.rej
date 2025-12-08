@@ -1,0 +1,29 @@
+--- /dev/null
++++ /dev/null
+@@ -193,19 +195,23 @@
+         }
+     }
+ 
+-
++    // 2️⃣ remove newly added files
+     for (file, _) in last_commit.init {
+         if Path::new(&file).exists() {
+             fs::remove_file(&file).unwrap();
+         }
+     }
+ 
+-
+-    scm.latest = build_latest_snapshot();
++    // 3️⃣ update latest snapshot
++    scm.latest = build_latest_snapshot(); // recreate from current files
+ 
++    // 4️⃣ save SCM
+     save_scm(&scm);
+ 
++    // 5️⃣ clean up
+     let _ = fs::remove_file(DIFF_NAME);
++}
++
+ }
+ 
+ 

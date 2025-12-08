@@ -1,0 +1,234 @@
+use serde::{Deserialize, Serialize};
+use similar::TextDiff;
+use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
+use walkdir::WalkDir;
+use std::process::Command;
+
+static SCM_NAME: &str = ".scm";
+static DIFF_NAME: &str = ".diff";
+
+type FileMap = HashMap<String, Vec<String>>;
+
+fn read_lines(path: &str) -> Vec<String> {
+    let p = Path::new(path);
+    if !p.is_file() {
+        return vec![];
+    }
+    fs::read_to_string(p)
+        .unwrap_or_else(|_| "".to_string())
+        .lines()
+        .map(|s| s.to_string())
+        .collect()
+}
+
+fn write_lines(path: &str, lines: &[String]) {
+    let mut content = lines.join("\n");
+    if !content.ends_with('\n') {
+        content.push('\n');
+    }
+    fs::write(path, content).unwrap();
+}
+
+fn diff_lines(a: &[String], b: &[String]) -> Vec<String> {
+    let a_join = a.join("\n");
+    let b_join = b.join("\n");
+
+    let diff = TextDiff::from_lines(&a_join, &b_join);
+    let mut out = Vec::new();
+
+    for hunk in diff.unified_diff().iter_hunks() {
+        for line in hunk.to_string().lines() {
+            out.push(line.trim_end().to_string());
+        }
+    }
+    if !out.last().map(|l| l.is_empty()).unwrap_or(false) {
+        out.push(String::new());
+    }
+
+    out
+}
+
+fn collect_visible_files() -> Vec<String> {
+    let cwd = std::env::current_dir().unwrap();
+
+    WalkDir::new(cwd)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .filter(|e| !e.path().to_string_lossy().contains("/."))
+        .map(|e| e.path().to_string_lossy().to_string())
+        .collect()
+}
+
+#[derive(Serialize, Deserialize)]
+struct CommitEntry {
+    init: FileMap,
+    diff: HashMap<String, Vec<String>>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct SCMFile {
+    latest: FileMap,
+    commit: Vec<CommitEntry>,
+}
+
+fn load_scm() -> Option<SCMFile> {
+    if !Path::new(SCM_NAME).exists() {
+        return None;
+    }
+    let s = fs::read_to_string(SCM_NAME).ok()?;
+    serde_json::from_str(&s).ok()
+}
+
+fn save_scm(scm: &SCMFile) {
+    fs::write(SCM_NAME, serde_json::to_string_pretty(scm).unwrap()).unwrap();
+}
+
+fn command_commit() {
+    let files = collect_visible_files();
+
+    let mut scm_opt = load_scm();
+
+    if scm_opt.is_none() {
+        // First commit
+        let mut latest = FileMap::new();
+        for f in &files {
+            latest.insert(f.clone(), read_lines(f));
+        }
+
+        let commit = CommitEntry {
+            init: latest.clone(),
+            diff: HashMap::new(),
+        };
+
+        let new_scm = SCMFile {
+            latest,
+            commit: vec![commit],
+        };
+
+        save_scm(&new_scm);
+        return;
+    }
+
+    let mut scm = scm_opt.unwrap();
+
+    let last = scm.commit.last().unwrap();
+
+    let old_fs: Vec<String> = last
+        .init
+        .keys()
+        .chain(last.diff.keys())
+        .cloned()
+        .collect();
+
+    let new_fs: Vec<String> = files
+        .iter()
+        .filter(|f| !old_fs.contains(f.clone()))
+        .cloned()
+        .collect();
+
+    let mut init = FileMap::new();
+    for f in &new_fs {
+        init.insert(f.clone(), read_lines(f));
+    }
+
+    let mut diff = HashMap::new();
+    for f in &old_fs {
+        let before = scm.latest.get(f).unwrap_or(&vec![]).to_vec();
+        let after = read_lines(f);
+        diff.insert(f.clone(), diff_lines(&before, &after));
+    }
+
+    let mut new_latest = FileMap::new();
+    for f in &files {
+        new_latest.insert(f.clone(), read_lines(f));
+    }
+    scm.latest = new_latest;
+
+    scm.commit.push(CommitEntry { init, diff });
+
+    save_scm(&scm);
+}
+
+fn command_scrape() {
+    let scm = match load_scm() {
+        Some(s) => s,
+        None => return,
+    };
+
+    for (path, lines) in scm.latest {
+        write_lines(&path, &lines);
+    }
+}
+
+fn command_revert() {
+    fn command_revert() {
+    let mut scm = match load_scm() {
+        Some(s) => s,
+        None => return,
+    };
+
+    if scm.commit.len() < 2 {
+        println!("Nothing to revert.");
+        return;
+    }
+
+    let last_commit = scm.commit.pop().unwrap();
+
+    // 1️⃣ revert files using patch
+    for (file, diff_lines_vec) in last_commit.diff {
+        write_lines(DIFF_NAME, &diff_lines_vec);
+
+        let status = Command::new("patch")
+            .arg("-R")
+            .arg(&file)
+            .arg(DIFF_NAME)
+            .status()
+            .unwrap();
+
+        if !status.success() {
+            eprintln!("Failed to revert {}", file);
+        }
+    }
+
+    
+    for (file, _) in last_commit.init {
+        if Path::new(&file).exists() {
+            fs::remove_file(&file).unwrap();
+        }
+    }
+
+    
+    scm.latest = build_latest_snapshot();
+
+    save_scm(&scm);
+
+    let _ = fs::remove_file(DIFF_NAME);
+}
+
+fn command_viewer() {
+    Command::new("jq")
+        .arg(".")
+        .arg(SCM_NAME)
+        .status()
+        .unwrap();
+}
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+
+    if args.len() != 2 {
+        eprintln!("Usage: scm <commit|scrape|revert|viewer>");
+        return;
+    }
+
+    match args[1].as_str() {
+        "commit" => command_commit(),
+        "scrape" => command_scrape(),
+        "revert" => command_revert(),
+        "viewer" => command_viewer(),
+        _ => eprintln!("Unknown command"),
+    }
+}
